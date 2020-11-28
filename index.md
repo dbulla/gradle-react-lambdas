@@ -4,15 +4,21 @@
 
 I recently had to work with a project that was a mash-up of a React front-end, combined with multiple AWS Lambdas.
 
-While all the code was JavaScript/TypeScript, there were large differences between the React build and the lambda builds - different
-toolsets, different frameworks, etc. I was somewhat constrained in that I could not change the code to bring them all into a single
-framework, so I really couldn't take advantage of some of the existing JS tools.
+While all the code was JavaScript/TypeScript, there were large differences between the React build and the lambda builds - 
+
+### Constraints
+
+I was somewhat constrained in that I could not change the code to bring them all into a single framework.  We had different toolsets, 
+different frameworks, etc., so I really couldn't take advantage of some of the existing JS tools which might help.
 
 Instead, I wrote a bunch of Jenkins code to manually iterate through all the projects when linting, testing, etc - but I had to keep track
 of what passed/failed, and notify Jenkins only after all of the subprojects had been run.
 
 It finally dawned on me that Gradle handles all of this quite easily - it knows how to handle a multiple project repo, and run tests on ALL
 the subprojects before reporting failure - stuff I'd been trying to implement.
+
+Gradle isn't a "native" JS tool, but for this use case I'm just calling shell scripts which run the JS commands needed.
+
 
 ## The Solution: Creating a Gradle Multi-Project for the Monorepo
 
