@@ -67,7 +67,7 @@ plugins {
 }
 ```
 
-Creating the plugin to manage the project
+## Creating the plugin to manage the project
 
 The plugin itself is quite simple - we have several nice plugins I like to add to every project, and then the creation of the React/AWS
 Lambda processing tasks. For the first bit of the plugin class, we do some setup and boilerplate:
@@ -101,7 +101,7 @@ Next, we apply the plugin itself, and it's extension, and we also apply several 
 import:
 
 ```kotlin
-    override fun apply(project: Project) {
+override fun apply(project: Project) {
     // register plugin extension
     val ext = project.extensions.create("reactLambdas", ReactLambdasPluginExtension::class, project)
     applyPlugins(project)
