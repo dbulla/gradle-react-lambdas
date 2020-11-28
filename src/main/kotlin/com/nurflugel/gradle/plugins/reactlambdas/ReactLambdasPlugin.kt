@@ -61,7 +61,7 @@ class ReactLambdasPlugin : Plugin<Project> {
             tasks {
                 tasks.register<ShellExec>("install") {
                     description = "Do the 'install' operation"
-                    group = "DRA"
+                    group = "Monorepo"
                     // this looks pretty fancy - but this is how we can have overridable commands per-project.  You could override it by having
                     // this bit in your project's build.gradle:
                     // ccReactLambdas {
@@ -76,7 +76,7 @@ class ReactLambdasPlugin : Plugin<Project> {
                 }
                 tasks.register<ShellExec>("installProduction") {
                     description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-                    group = "DRA"
+                    group = "Monorepo"
                     command = when {
                         isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
                         else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
@@ -86,7 +86,7 @@ class ReactLambdasPlugin : Plugin<Project> {
                 }
                 tasks.register<ShellExec>("test") {
                     description = "Run the tests for both React and Lambdas"
-                    group = "DRA"
+                    group = "Monorepo"
                     command = when {
                         isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
                         else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
@@ -96,7 +96,7 @@ class ReactLambdasPlugin : Plugin<Project> {
 
                 tasks.register<ShellExec>("lint") {
                     description = "Lint the code"
-                    group = "DRA"
+                    group = "Monorepo"
                     command = when {
                         isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
                         else                  -> ext.lintLambdaCommand ?: "yarn run lint"
@@ -106,62 +106,59 @@ class ReactLambdasPlugin : Plugin<Project> {
 
                 tasks.register<ShellExec>("tsc") {
                     description = "Run tsc on any project that has a tsconfig.json "
-                    group = "DRA"
+                    group = "Monorepo"
                     command = "yarn run tsc"
                     onlyIf {
                         val lambda = isLambda(this.project)
                         val exists = file("tsconfig.json").exists()
-                        println("tsconfig.json exists = ${exists}")
+                        println("tsconfig.json exists = $exists")
                         lambda && exists
                     }
                 }
 
-
                 // React only
                 tasks.register<ShellExec>("runReact") {
                     description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-                    group = "DRA"
+                    group = "Monorepo"
                     command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
                     onlyIf { isReact(this.project) }
                 }
 
-
                 // React only
                 tasks.register<ShellExec>("buildCss") {
                     description = "Build the CSS"
-                    group = "DRA"
+                    group = "Monorepo"
                     command = ext.buildCssCommand ?: "npm run build-css"
                     onlyIf { isReact(this.project) }
                 }
 
                 tasks.register<Exec>("cleanUpForDeploy") {
-                    description = "Remove any files in the lamgda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
-                    group = "DRA"
+                    description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
+                    group = "Monorepo"
                     isIgnoreExitValue = true
-                    commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js".split(
-                            " "
-                                                                                                                                                                                 )
+                    commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js"
+                            .split(" ")
                     onlyIf { isLambda(this.project) && packageJsonExists(this.project) }
                 }
 
                 // below are housekeeping tasks
                 tasks.register<ShellExec>("createModulesList") {
                     description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
-                    group = "DRA Housekeeping"
+                    group = "Monorepo Housekeeping"
                     command = "ls -w1 node_modules > node_modules.out"
                     onlyIf { packageJsonExists(this.project) }
                 }
 
                 tasks.register<Delete>("cleanNodeModules") {
                     description = "Clean the node modules dirs"
-                    group = "DRA Housekeeping"
+                    group = "Monorepo Housekeeping"
                     delete = setOf("node_modules", "node_modules.out")
                 }
             }
         }
         tasks.register<ShellExec>("mergeTestResults") {
-            description = "Merge all the test results"
-            group = "DRA"
+            description = "Merge all the test coverage results"
+            group = "Monorepo"
             command = """
         mkdir -p ../lcov
         """ + createMergeCommands(project)
@@ -169,13 +166,13 @@ class ReactLambdasPlugin : Plugin<Project> {
 
         tasks.register<ShellExec>("cleanCoverage") {
             description = "Clean out the coverage folders between tests"
-            group = "DRA Housekeeping"
+            group = "Monorepo Housekeeping"
             command = "find . -name coverage | grep -v modules | xargs rm -rf"
         }
         tasks.register("regenerateSettingsDotGradle") {
 
             description = "Utility class to regenerate the tools/settings.gradle.kts file - if you create more lambdas, run this "
-            group = "DRA Housekeeping"
+            group = "Monorepo Housekeeping"
             doLast {
                 // create the file header
                 val stringBuilder = StringBuilder("""rootProject.name = "${rootProject.name}"
@@ -237,7 +234,7 @@ project(":$it").projectDir = File("../src/lambda/$it")
 
         tasks.register<ShellExec>("outputToolVersions") {
             description = "Show the tool versions"
-            group = "DRA Housekeeping"
+            group = "Monorepo Housekeeping"
 
             command = """
         echo "Git version " $(git --version)

@@ -2,14 +2,14 @@ group = "com.nurflugel"
 version = "0.0.1-SNAPSHOT"
 
 plugins {
-    `kotlin-dsl`
     `java-gradle-plugin`
     kotlin("jvm") version "1.3.72"
-    //    kotlin("jvm") version "1.4.20"
+    `kotlin-dsl`
+    `maven-publish`
+
     id("at.phatbl.shellexec") version "1.5.2"
     id("com.github.ben-manes.versions") version "0.36.0"
     id("com.dorongold.task-tree") version "1.5"
-    //classpath "com.gradle.publish:plugin-publish-plugin:0.10.0"
     id("com.gradle.plugin-publish") version "0.12.0"
 }
 
@@ -39,6 +39,18 @@ dependencies {
     implementation("gradle.plugin.com.dorongold.plugins:task-tree:$taskTreeVersion")
     implementation("gradle.plugin.at.phatbl:shellexec:$shellExecVersion")
 }
+
+println("""
+      ========================================================================================================
+      Welcome to Gradle version:          ${project.gradle.gradleVersion}
+      Java version:                       ${org.gradle.internal.jvm.Jvm.current()}
+      Java home:                          ${org.gradle.internal.jvm.Jvm.current().javaHome}
+      Gradle user directory is set to:    ${project.gradle.gradleUserHomeDir}
+      Project directory:                  ${project.projectDir}
+      Running build script:               ${project.buildFile}
+      Subprojects:                        ${project.subprojects.map { it.name }}
+      """.trimIndent()
+       )
 
 //pluginBundle {
 //  // These settings are set for the whole plugin bundle
