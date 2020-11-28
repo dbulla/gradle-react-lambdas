@@ -14,7 +14,7 @@ of what passed/failed, and notify Jenkins only after all of the subprojects had 
 It finally dawned on me that Gradle handles all of this quite easily - it knows how to handle a multiple project repo, and run tests on ALL
 the subprojects before reporting failure - stuff I'd been trying to implement.
 
-## Creating a Gradle Project for the Monorepo
+## The Solution: Creating a Gradle Multi-Project for the Monorepo
 
 The first step in this is telling Gradle what the subprojects are. In my case, my directory setup looked like this:
 
@@ -117,124 +117,127 @@ private fun applyPlugins(project: Project) = with(project) {
     pluginManager.apply("at.phatbl.shellexec")
 }
 ```
+I like the `shellexec` package over the default Gradle `exec` task, as I don't need to split the command line up to use it.
 
-Now the meat - we want to specify some global tasks, and tasks that are only run in the subprojects, and some of them only in react or
-lambda subprojects. Those helper methods shown above make things tidy. Notice that we use the `onlyIf` predicate to determine if we should
-do this at all - for instance, in the `install` task, we will skip the dir if there is no `package.json` file in it. Sometimes devs add new
-dirs into the source trees and we don't want to process anything that really shouldn't be.
+Now for the meat - we want to specify some tasks that are are only run in the subprojects, and some that rae global, and some of them should 
+only in react or lambda subprojects. 
 
-For the `command`, we provide overridable defaults for the React and AWS lambda dirs (more on overriding these later).
+Those helper methods shown above help keep the real logic tidy. 
 
-Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal with the command lines.
+Notice that we use the `onlyIf` predicate to determine if we should do this at all - for instance, in the `install` task, we will 
+skip the dir if there is no `package.json` file in it. Sometimes devs add new
+dirs into the source trees, and we don't want to process anything that really shouldn't be.
+
+For the shell `command`, we provide overridable defaults for the React and AWS Lambda dirs (more on overriding these later).
 
 ```kotlin
-    private fun registerTasks(project: Project, ext: ReactLambdasPluginExtension) = with(project) {
+private fun registerTasks(project: Project, ext: ReactLambdasPluginExtension) = with(project) {
 
-    /** Everything in subprojects applies only to the sub-projects - not the global project */
-    subprojects {
-        tasks {
-            tasks.register<ShellExec>("install") {
-                description = "Do the 'install' operation"
-                group = "React/Lambdas"
-                command = when {
-                    isReact(this.project) -> ext.installReactCommand ?: "npm install"
-                    else                  -> ext.installLambdaCommand ?: "yarn"
-                }
-                onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
+/** Everything in subprojects applies only to the sub-projects - not the global project */
+subprojects {
+    tasks {
+        tasks.register<ShellExec>("install") {
+            description = "Do the 'install' operation"
+            group = "React/Lambdas"
+            command = when {
+                isReact(this.project) -> ext.installReactCommand ?: "npm install"
+                else                  -> ext.installLambdaCommand ?: "yarn"
+            }
+            onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
 
+        }
+        tasks.register<ShellExec>("installProduction") {
+            description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
+            group = "React/Lambdas"
+            command = when {
+                isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
+                else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
             }
-            tasks.register<ShellExec>("installProduction") {
-                description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-                group = "React/Lambdas"
-                command = when {
-                    isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
-                    else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
-                }
-                onlyIf { packageJsonExists(this.project) }
-                doLast { println("The env used is: $reactEnvironment") }
+            onlyIf { packageJsonExists(this.project) }
+            doLast { println("The env used is: $reactEnvironment") }
+        }
+        tasks.register<ShellExec>("test") {
+            description = "Run the tests for both React and Lambdas"
+            group = "React/Lambdas"
+            command = when {
+                isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
+                else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
             }
-            tasks.register<ShellExec>("test") {
-                description = "Run the tests for both React and Lambdas"
-                group = "React/Lambdas"
-                command = when {
-                    isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
-                    else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
-                }
-                onlyIf { packageJsonExists(this.project) }
-            }
+            onlyIf { packageJsonExists(this.project) }
+        }
 
-            tasks.register<ShellExec>("lint") {
-                description = "Lint the code"
-                group = "React/Lambdas"
-                command = when {
-                    isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
-                    else                  -> ext.lintLambdaCommand ?: "yarn run lint"
-                }
-                onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
+        tasks.register<ShellExec>("lint") {
+            description = "Lint the code"
+            group = "React/Lambdas"
+            command = when {
+                isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
+                else                  -> ext.lintLambdaCommand ?: "yarn run lint"
             }
+            onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
+        }
 
-            tasks.register<ShellExec>("tsc") {
-                description = "Run tsc on any project that has a tsconfig.json "
-                group = "React/Lambdas"
-                command = "yarn run tsc"
-                onlyIf {
-                    val lambda = isLambda(this.project)
-                    val exists = file("tsconfig.json").exists()
-                    println("tsconfig.json exists = $exists")
-                    lambda && exists
-                }
-            }
-
-            // React only
-            tasks.register<ShellExec>("genGraphQlSchema") {
-                description = "Generate the GraphQA schema config file."
-                group = "React/Lambdas"
-                command = ext.genGraphQlSchemaCommand
-                          ?: "node --unhandled-rejections=strict src/scripts/graphqlSchemaIntrospection.js https://api.dev.digitalassets.nike.net/graphql"
-                onlyIf { isReact(this.project) }
-            }
-
-            // React only
-            tasks.register<ShellExec>("runReact") {
-                description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-                group = "React/Lambdas"
-                command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
-                onlyIf { isReact(this.project) }
-            }
-
-            // React only
-            tasks.register<ShellExec>("buildCss") {
-                description = "Build the CSS"
-                group = "React/Lambdas"
-                command = ext.buildCssCommand ?: "npm run build-css"
-                onlyIf { isReact(this.project) }
-            }
-
-            tasks.register<Exec>("cleanUpForDeploy") {
-                description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
-                group = "React/Lambdas"
-                isIgnoreExitValue = true
-                commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js".split(
-                        " "
-                                                                                                                                                                             )
-                onlyIf { isLambda(this.project) && packageJsonExists(this.project) }
-            }
-
-            // below are housekeeping tasks
-            tasks.register<ShellExec>("createModulesList") {
-                description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
-                group = "React/Lambdas Housekeeping"
-                command = "ls -w1 node_modules > node_modules.out"
-                onlyIf { packageJsonExists(this.project) }
-            }
-
-            tasks.register<Delete>("cleanNodeModules") {
-                description = "Clean the node modules dirs"
-                group = "React/Lambdas Housekeeping"
-                delete = setOf("node_modules", "node_modules.out")
+        tasks.register<ShellExec>("tsc") {
+            description = "Run tsc on any project that has a tsconfig.json "
+            group = "React/Lambdas"
+            command = "yarn run tsc"
+            onlyIf {
+                val lambda = isLambda(this.project)
+                val exists = file("tsconfig.json").exists()
+                println("tsconfig.json exists = $exists")
+                lambda && exists
             }
         }
+
+        // React only
+        tasks.register<ShellExec>("genGraphQlSchema") {
+            description = "Generate the GraphQA schema config file."
+            group = "React/Lambdas"
+            command = ext.genGraphQlSchemaCommand
+                      ?: "node --unhandled-rejections=strict src/scripts/graphqlSchemaIntrospection.js https://api.dev.digitalassets.nike.net/graphql"
+            onlyIf { isReact(this.project) }
+        }
+
+        // React only
+        tasks.register<ShellExec>("runReact") {
+            description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
+            group = "React/Lambdas"
+            command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
+            onlyIf { isReact(this.project) }
+        }
+
+        // React only
+        tasks.register<ShellExec>("buildCss") {
+            description = "Build the CSS"
+            group = "React/Lambdas"
+            command = ext.buildCssCommand ?: "npm run build-css"
+            onlyIf { isReact(this.project) }
+        }
+
+        tasks.register<Exec>("cleanUpForDeploy") {
+            description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
+            group = "React/Lambdas"
+            isIgnoreExitValue = true
+            commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js".split(
+                    " "
+                                                                                                                                                                         )
+            onlyIf { isLambda(this.project) && packageJsonExists(this.project) }
+        }
+
+        // below are housekeeping tasks
+        tasks.register<ShellExec>("createModulesList") {
+            description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
+            group = "React/Lambdas Housekeeping"
+            command = "ls -w1 node_modules > node_modules.out"
+            onlyIf { packageJsonExists(this.project) }
+        }
+
+        tasks.register<Delete>("cleanNodeModules") {
+            description = "Clean the node modules dirs"
+            group = "React/Lambdas Housekeeping"
+            delete = setOf("node_modules", "node_modules.out")
+        }
     }
+}
 
 ```
 
