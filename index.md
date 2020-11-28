@@ -135,7 +135,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
         tasks {
             tasks.register<ShellExec>("install") {
                 description = "Do the 'install' operation"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = when {
                     isReact(this.project) -> ext.installReactCommand ?: "npm install"
                     else                  -> ext.installLambdaCommand ?: "yarn"
@@ -145,7 +145,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             }
             tasks.register<ShellExec>("installProduction") {
                 description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = when {
                     isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
                     else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
@@ -155,7 +155,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             }
             tasks.register<ShellExec>("test") {
                 description = "Run the tests for both React and Lambdas"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = when {
                     isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
                     else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
@@ -165,7 +165,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
 
             tasks.register<ShellExec>("lint") {
                 description = "Lint the code"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = when {
                     isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
                     else                  -> ext.lintLambdaCommand ?: "yarn run lint"
@@ -175,7 +175,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
 
             tasks.register<ShellExec>("tsc") {
                 description = "Run tsc on any project that has a tsconfig.json "
-                group = "DRA"
+                group = "React/Lambdas"
                 command = "yarn run tsc"
                 onlyIf {
                     val lambda = isLambda(this.project)
@@ -188,7 +188,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             // React only
             tasks.register<ShellExec>("genGraphQlSchema") {
                 description = "Generate the GraphQA schema config file."
-                group = "DRA"
+                group = "React/Lambdas"
                 command = ext.genGraphQlSchemaCommand
                           ?: "node --unhandled-rejections=strict src/scripts/graphqlSchemaIntrospection.js https://api.dev.digitalassets.nike.net/graphql"
                 onlyIf { isReact(this.project) }
@@ -197,7 +197,7 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             // React only
             tasks.register<ShellExec>("runReact") {
                 description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
                 onlyIf { isReact(this.project) }
             }
@@ -205,14 +205,14 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             // React only
             tasks.register<ShellExec>("buildCss") {
                 description = "Build the CSS"
-                group = "DRA"
+                group = "React/Lambdas"
                 command = ext.buildCssCommand ?: "npm run build-css"
                 onlyIf { isReact(this.project) }
             }
 
             tasks.register<Exec>("cleanUpForDeploy") {
                 description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
-                group = "DRA"
+                group = "React/Lambdas"
                 isIgnoreExitValue = true
                 commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js".split(
                         " "
@@ -223,14 +223,14 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
             // below are housekeeping tasks
             tasks.register<ShellExec>("createModulesList") {
                 description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
-                group = "DRA Housekeeping"
+                group = "React/Lambdas Housekeeping"
                 command = "ls -w1 node_modules > node_modules.out"
                 onlyIf { packageJsonExists(this.project) }
             }
 
             tasks.register<Delete>("cleanNodeModules") {
                 description = "Clean the node modules dirs"
-                group = "DRA Housekeeping"
+                group = "React/Lambdas Housekeeping"
                 delete = setOf("node_modules", "node_modules.out")
             }
         }
@@ -241,16 +241,16 @@ Finally, I've been using the `ShellExec` plugin, as it's a little easier to deal
 Next, we have to merge our test results into a single file that our pipeline can publish, rather than many smaller ones (corporate
 requirement - one report per repo):
 
-```
+```kotlin
     tasks.register<ShellExec>("mergeTestResults") {
-        description = "Merge all the test results"
-        group = "DRA"
-        command = """
+    description = "Merge all the test results"
+    group = "React/Lambdas"
+    command = """
         mkdir -p ../lcov
         """ + createMergeCommands(project)
-    }
-    
-    
+}
+
+
 /** Some of the tools don't give you an option to ignore stuff that's not there and fail, so we have to have different
  * commands for whether or not React is there.  It's assumed that there is at least one lambda in the project; else, we'll
  * have to have a third condition of react w/no lambdas.
@@ -264,36 +264,36 @@ private fun createMergeCommands(project: Project): String {
     return when {
         hasReact -> {
             """
-            #  First, copy results from the React dir into the lcov dir - OK if it's not there
-    lcov-result-merger '../react/coverage/lcov.info' '../lcov/react_lcov.info' || true
-            #  Next, merge any lambdas into the lcov dir
-    lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-            #  Finally, merge it all together so we have SINGLE file we can send to QMA
-    lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-
-            # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-    junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-    junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true
-    junit-merge  ../allLambdasMergedTests.xml ../allReactMergedTests.xml -o ../allMergedTests.xml || true
-
-     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-     junit2html ../allMergedTests.xml ../allMergedTests.html
+                        #  First, copy results from the React dir into the lcov dir - OK if it's not there
+                lcov-result-merger '../react/coverage/lcov.info' '../lcov/react_lcov.info' || true
+                        #  Next, merge any lambdas into the lcov dir
+                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
+                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
+                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
+            
+                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
+                junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true
+                junit-merge  ../allLambdasMergedTests.xml ../allReactMergedTests.xml -o ../allMergedTests.xml || true
+            
+                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                 junit2html ../allMergedTests.xml ../allMergedTests.html
 """
         }
         else     -> { // React is missing, so these commands need to be adjusted
             """
-            #  Merge any lambdas into the lcov dir
-    lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-            #  Finally, merge it all together so we have SINGLE file we can send to QMA
-    lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-
-            # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-
-    junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-    junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
-
-     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-     junit2html ../allMergedTests.xml ../allMergedTests.html
+                        #  Merge any lambdas into the lcov dir
+                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
+                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
+                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
+            
+                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+            
+                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
+                junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
+            
+                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                 junit2html ../allMergedTests.xml ../allMergedTests.html
 """
         }
     }
@@ -307,7 +307,7 @@ I hate maintaining files needed for the build - this next task will create the `
     tasks.register("regenerateSettingsDotGradle") {
 
     description = "Utility class to regenerate the tools/settings.gradle.kts file - if you create more lambdas, run this "
-    group = "DRA Housekeeping"
+    group = "React/Lambdas Housekeeping"
     doLast {
         // create the file header
         val stringBuilder = StringBuilder("""rootProject.name = "${rootProject.name}"
@@ -364,7 +364,6 @@ project(":$it").projectDir = File("../src/lambda/$it")
 
     }
 }
-}
 ```
 
 And, finally, a nice util function to print out all the versions being used. We let the extensions add any extra commands. Lastly, we print
@@ -374,7 +373,7 @@ a banner after all the project evaluation has been done.
 
 tasks.register<ShellExec>("outputToolVersions") {
     description = "Show the tool versions"
-    group = "DRA Housekeeping"
+    group = "React/Lambdas Housekeeping"
 
     command = """
         echo "Git version " $(git --version)
