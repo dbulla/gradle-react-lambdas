@@ -64,10 +64,8 @@ pluginManagement {
 
 <details>
 <summary>Click to expand...</summary>
-<p>
 
 ```kotlin
-
 import at.phatbl.shellexec.ShellExec
 
 group = "net.something.someone"
@@ -77,7 +75,15 @@ plugins {
     id("com.dorongold.task-tree") version "1.5"
 }
 dependencies{}
+```
 
+</details>  
+
+
+
+
+
+```
     val reactEnvironment = System.getProperty("REACT_APP_ENVIRONMENT") ?: "local"
     val prefix = """
              ========================================================================================================
@@ -202,7 +208,7 @@ dependencies{}
             mkdir -p ../lcov
             """ + createMergeCommands(project)
     }
-}
+
 
 
 
@@ -253,12 +259,6 @@ private fun createMergeCommands(project: Project): String {
         }
     }
 }
-}
-```
-
-I hate maintaining files needed for the build - this next task will create the `settings.gradle.kts` file:
-
-```kotlin
     tasks.register("regenerateSettingsDotGradle") {
 
     description = "Utility class to regenerate the tools/settings.gradle.kts file - if you create more lambdas, run this "
@@ -335,12 +335,8 @@ tasks.register<ShellExec>("outputToolVersions") {
         ${ext.outputToolVersionsExtra ?: ""}
         """ + createMergeCommands(project)
 }
-
-}
 ```
 
-</p>
-</details>  
 
 ## Creating the build script the project - second pass - use a plugin
 
