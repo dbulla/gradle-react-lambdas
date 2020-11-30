@@ -89,7 +89,7 @@ pluginManagement {
 
 ## Creating the build script the project - first pass
 
-Here's what my first build script looked like: [build.gradle.kts](build.grdle.kts.md)
+Here's what my first build script looked like: [build.gradle.kts](build_grdle_kts.md)
 
 Breaking it down, we have some plugins that we bring in.  I like the `shellexec` plugin, `task-tree` and `versions` are often very helpful.
 
