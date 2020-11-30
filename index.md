@@ -62,6 +62,8 @@ pluginManagement {
 
 ## Creating the build script the project - first pass
 
+Reference: [a relative link](dibble.md)
+
 <details>
 <summary>Click to expand...</summary>
 
