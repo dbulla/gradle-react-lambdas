@@ -132,6 +132,7 @@ Next, we hve some simple methods used to determine what type of subproject is be
 Now, we specify tasks for subprojects.  
 - The `command` which will be executed differs between the React projects (npm), and AWS Lambdas (yarn).  Note that with the use of `when`, we can easily extend the types of commands if needed
 - The `onlyIf` closure determines if this task should be run on the given subproject (that's why there's the `this.project` instead of just `project`)
+
 ```kotlin
 /** Everything in subprojects applies only to the sub-projects - not the global project */
 subprojects {
