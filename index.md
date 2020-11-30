@@ -90,6 +90,8 @@ pluginManagement {
 ## Creating the build script the project - first pass
 
 Here's what my first build script looked like: [build.gradle.kts](build_grdle_kts.md)
+Here's what my first build script looked like: [build.gradle.kts](https://github.com/dbulla/gradle-react-lambdas/blob/gh-pages/build_gradle_kts.md)
+Here's what my first build script looked like: [build.gradle.kts](https://github.com/dbulla/gradle-react-lambdas/blob/gh-pages/src/exampleFullScript/build.gradle.kts)
 
 Breaking it down, we have some plugins that we bring in.  I like the `shellexec` plugin, `task-tree` and `versions` are often very helpful.
 
