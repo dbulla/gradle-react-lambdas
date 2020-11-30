@@ -1,12 +1,6 @@
-# Dibble
-
-Dabble Build script here:
-
+# build.gradle.kts:
 ```kotlin
 import at.phatbl.shellexec.ShellExec
-
-group = "net.something.someone"
-version = "1.0.0"
 
 plugins {
     id("at.phatbl.shellexec") version "1.5.2"
