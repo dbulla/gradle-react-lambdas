@@ -5,7 +5,7 @@
 I recently had to work with a project that was a mash-up of a React front-end, combined with multiple AWS Lambdas.
 
 While all the code was JavaScript/TypeScript, there were large differences between the React build and the lambda builds - and even within
-the lambdas (up to 20 in a repo), Typescript was used in most, but not all of the projects.
+the lambdas (up to 20 in a repo). Typescript was used in most, but not all of the projects.
 
 ## Constraints
 
@@ -144,17 +144,17 @@ subprojects {
       description = "Do the 'install' operation"
       group = "React/Lambdas"
       command = when {
-        isReact(this.project)         -> ext.installReactCommand ?: "npm install"
-                else                  -> ext.installLambdaCommand ?: "yarn"
-            }
-            onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
+        isReact(this.project) -> ext.installReactCommand ?: "npm install"
+        else                  -> ext.installLambdaCommand ?: "yarn"
+      }
+      onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
 
-        }
-        tasks.register<ShellExec>("installProduction") {
-            description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-            group = "React/Lambdas"
-            command = when {
-                isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
+    }
+    tasks.register<ShellExec>("installProduction") {
+      description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
+      group = "React/Lambdas"
+      command = when {
+        isReact(this.project)         -> ext.installReactProductionCommand ?: "npm run build"
                 else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
             }
             onlyIf { packageJsonExists(this.project) }
@@ -192,21 +192,21 @@ subprojects {
             }
         }
 
-        // React only
-        tasks.register<ShellExec>("runReact") {
-            description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-            group = "React/Lambdas"
-            command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
-            onlyIf { isReact(this.project) }
-        }
+    // React only
+    tasks.register<ShellExec>("runReact") {
+      description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
+      group = "React/Lambdas"
+      command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
+      onlyIf { isReact(this.project) }
+    }
 
-        // React only
-        tasks.register<ShellExec>("buildCss") {
-          description = "Build the CSS"
-          group = "React/Lambdas"
-          command = ext.buildCssCommand ?: "npm run build-css"
-          onlyIf { isReact(this.project) }
-        }
+    // React only
+    tasks.register<ShellExec>("buildCss") {
+      description = "Build the CSS"
+      group = "React/Lambdas"
+      command = ext.buildCssCommand ?: "npm run build-css"
+      onlyIf { isReact(this.project) }
+    }
 
     tasks.register<Exec>("cleanUpForDeploy") {
       description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
@@ -238,7 +238,7 @@ subprojects {
 Our pipeline tools need a single report for tests and test coverage, so we've got to merge a bunch of stuff. We ended up using a couple of
 tools:
 
-- lcov-result-merger
+- nyc (Istanbul)
 - junit-merge
 - junit2html
 
@@ -247,7 +247,7 @@ I but this all into a method called `createMergeCommands.`
 ```kotlin
 tasks.register<ShellExec>("mergeTestResults") {
   description = "Merge all the test results"
-    group = "React/Lambdas"
+  group = "React/Lambdas"
     command = """
         mkdir -p ../lcov
         """ + createMergeCommands(project)
@@ -258,47 +258,29 @@ tasks.register<ShellExec>("mergeTestResults") {
  * have to have a third condition of react w/no lambdas.
  */
 private fun createMergeCommands(project: Project): String {
-    val hasReact = File("${project.projectDir}/..")
-            .listFiles()
-            .any { it.name == "react" }
+  val hasReact = File("${project.projectDir}/..")
+          .listFiles()
+          .any { it.name == "react" }
 
-    println("hasReact files is $hasReact")
-    return when {
-        hasReact -> {
-            """
-                        #  First, copy results from the React dir into the lcov dir - OK if it's not there
-                lcov-result-merger '../react/coverage/lcov.info' '../lcov/react_lcov.info' || true
-                        #  Next, merge any lambdas into the lcov dir
-                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
-                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-            
-                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-                junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true
-                junit-merge  ../allLambdasMergedTests.xml ../allReactMergedTests.xml -o ../allMergedTests.xml || true
-            
-                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                 junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-        }
-        else     -> { // React is missing, so these commands need to be adjusted
-            """
-                        #  Merge any lambdas into the lcov dir
-                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
-                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-            
-                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-            
-                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-                junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
-            
-                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                 junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-        }
-    }
+  println("hasReact files is $hasReact")
+  return """
+               # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+               junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
+               """
+  + if (hasReact)
+    "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"
+  + """
+               junit - merge../ allLambdasMergedTests . xml .. / allReactMergedTests.xml - o../ allMergedTests . xml || true
+       
+               #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
+               junit2html../ allMergedTests . xml .. / allMergedTests.html
+               # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
+               junit-merge ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
+               junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
+           
+                #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                junit2html ../allMergedTests.xml ../allMergedTests.html
+""".trimIndent()
 }
 
 ```
@@ -436,7 +418,7 @@ class ReactLambdasPlugin : Plugin<Project> {
 
     private fun packageJsonExists(project: Project): Boolean = File(project.projectDir, "package.json").exists()
     private fun isLambda(project: Project): Boolean = project.projectDir.toString().contains("src/lambda")
-    private fun isReact(project: Project): Boolean = project.projectDir.toString().contains("react")
+  private fun isReact(project: Project): Boolean = project.projectDir.toString().contains("react")
   private val reactEnvironment = System.getProperty("REACT_APP_ENVIRONMENT") ?: "local"
 }
 ```
@@ -445,10 +427,10 @@ Next, we apply the plugin itself, and it's extension. We also apply several very
 
 ```kotlin
 override fun apply(project: Project) {
-    // register plugin extension
-    val ext = project.extensions.create("reactLambdas", ReactLambdasPluginExtension::class, project)
-    applyPlugins(project)
-    registerTasks(project, ext)
+  // register plugin extension
+  val ext = project.extensions.create("reactLambdas", ReactLambdasPluginExtension::class, project)
+  applyPlugins(project)
+  registerTasks(project, ext)
 }
 
 /** Apply the specified plugins to the project */
