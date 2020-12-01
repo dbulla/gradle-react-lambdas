@@ -690,7 +690,25 @@ afterEvaluate {
              ReactEnvironment:                   $reactEnvironment
              Subprojects:                        ${project.subprojects.map { it.name }}
              """.trimIndent()
-    println(prefix)
+  println(prefix)
+}
+```
+
+# Configuration - overriding the defaults
+
+It's fully expected that a project might need to use a different command than the default. It's easy to override - say, for the
+React `install` commands, you'd like to run with extra output. In your project's build file, you'd add a `reactLambdas` configuration block
+like so:
+
+```kotlin
+group = "net.something.someone"
+version = "1.0.0"
+plugins {
+  id("net.something.someone.react-lambdas") version "0.0.1-SNAPSHOT"
+}
+reactLambdas {
+  installReactCommand = "npm install --verbose"
+  installReactProductionCommand = "npm run build --verbose"
 }
 ```
 
