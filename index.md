@@ -374,7 +374,7 @@ tasks.register<ShellExec>("outputToolVersions") {
 
 This worked quite nicely. However, as the number of projects grew, there was a lot of copy/paste across the projects.
 
-## Creating the build script the project - second pass - use a plugin
+## Creating the build script the project - second pass: write a plugin for reuse
 
 I didn't want to deal with a bunch of copy/pasted code, so I wrote a Gradle plugin to handle the work - the individual
 projects' `build.gradle.kts` scripts were this simple (5 lines!):
