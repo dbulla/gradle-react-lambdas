@@ -248,9 +248,7 @@ I but this all into a method called `createMergeCommands.`
 tasks.register<ShellExec>("mergeTestResults") {
   description = "Merge all the test results"
   group = "React/Lambdas"
-    command = """
-        mkdir -p ../lcov
-        """ + createMergeCommands(project)
+    command = createMergeCommands(project)
 }
 
 /** Some of the tools don't give you an option to ignore stuff that's not there and fail, so we have to have different
@@ -267,8 +265,7 @@ private fun createMergeCommands(project: Project): String {
                # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
                """
-  + if (hasReact)
-    "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"
+  + if (hasReact){ "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"}
   + """
                junit - merge../ allLambdasMergedTests . xml .. / allReactMergedTests.xml - o../ allMergedTests . xml || true
        

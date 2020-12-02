@@ -212,7 +212,6 @@ tasks.register<ShellExec>("outputToolVersions") {
         """ + createMergeCommands(project)
 }
 
-
 /**
  * Some of the tools don't give you an option to ignore stuff that's not there and fail, so we have to have different
  * commands for whether or not React is there.  It's assumed that there is at least one lambda in the project; else, we'll
@@ -224,40 +223,24 @@ private fun createMergeCommands(project: Project): String {
             .any { it.name == "react" }
 
     println("hasReact files is $hasReact")
-    return when {
-        hasReact -> {
-            """
-                        #  First, copy results from the React dir into the lcov dir - OK if it's not there
-                lcov-result-merger '../react/coverage/lcov.info' '../lcov/react_lcov.info' || true
-                        #  Next, merge any lambdas into the lcov dir
-                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
-                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-            
-                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+    return """
+                # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
                 junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-                junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true
-                junit-merge  ../allLambdasMergedTests.xml ../allReactMergedTests.xml -o ../allMergedTests.xml || true
-            
-                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                 junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-        }
-        else     -> { // React is missing, so these commands need to be adjusted
-            """
-                        #  Merge any lambdas into the lcov dir
-                lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-                        #  Finally, merge it all together so we have SINGLE file we can send to QMA
-                lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-            
-                        # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-            
-                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
+                """
+    + if (hasReact)
+        "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"
+    + """
+                junit - merge../ allLambdasMergedTests . xml .. / allReactMergedTests.xml - o../ allMergedTests . xml || true
+        
+                #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
+                junit2html../ allMergedTests . xml .. / allMergedTests.html
+                
+                # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
+                junit-merge ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
                 junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
             
                  #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
                  junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-        }
-    }
+""".trimIndent()
+}
 }
