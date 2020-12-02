@@ -159,9 +159,7 @@ class ReactLambdasPlugin : Plugin<Project> {
         tasks.register<ShellExec>("mergeTestResults") {
             description = "Merge all the test coverage results"
             group = "Monorepo"
-            command = """
-        mkdir -p ../lcov
-        """ + createMergeCommands(project)
+            command = createMergeCommands(project)
         }
 
         tasks.register<ShellExec>("cleanCoverage") {
@@ -178,7 +176,6 @@ class ReactLambdasPlugin : Plugin<Project> {
                 val stringBuilder = StringBuilder("""rootProject.name = "${rootProject.name}"
 """
                                                  )
-
                 // deal with the react contents if they exist
                 val reactDir = File("react")
                 println("React dir exists: ${reactDir.exists()}")
@@ -237,15 +234,15 @@ project(":$it").projectDir = File("../src/lambda/$it")
             group = "Monorepo Housekeeping"
 
             command = """
-        echo "Git version " $(git --version)
-        echo "NPM version " $(npm --version)
-        echo "Node version" $(node --version)
-        echo "Yarn version" $(yarn --version)
-        echo "Tsc version " $(tsc --version)
-        echo "pip3 version " $(pip3 -V)
-        echo "junit-merge version " $(junit-merge -V)
-        ${ext.outputToolVersionsExtra ?: ""}
-        """ + createMergeCommands(project)
+                echo "Git version " $(git --version)
+                echo "NPM version " $(npm --version)
+                echo "Node version" $(node --version)
+                echo "Yarn version" $(yarn --version)
+                echo "Tsc version " $(tsc --version)
+                echo "pip3 version " $(pip3 -V)
+                echo "junit-merge version " $(junit-merge -V)
+                ${ext.outputToolVersionsExtra ?: ""}
+                """ + createMergeCommands(project)
         }
 
         afterEvaluate {
@@ -263,43 +260,26 @@ project(":$it").projectDir = File("../src/lambda/$it")
                 .listFiles()
                 .any { it.name == "react" }
 
-        println("hasReact files is $hasReact")
-        return when {
-            hasReact -> {
-                """
-            #  First, copy results from the React dir into the lcov dir - OK if it's not there
-    lcov-result-merger '../react/coverage/lcov.info' '../lcov/react_lcov.info' || true
-            #  Next, merge any lambdas into the lcov dir
-    lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-            #  Finally, merge it all together so we have SINGLE file we can send to QMA
-    lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
+        val mergeReactClause = if (hasReact) "junit-merge  react/coverage/jest/junit.xml  -o allReactMergedTests.xml || true" else ""
+        val mergeLambdasClause = """
+                    # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+                    junit-merge  src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
+                    """.trimIndent()
 
-            # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-    junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-    junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true
-    junit-merge  ../allLambdasMergedTests.xml ../allReactMergedTests.xml -o ../allMergedTests.xml || true
+        val mergingMergedClause = if (hasReact) "junit-merge allLambdasMergedTests.xml allReactMergedTests.xml -o allMergedTests.xml || true" else ""
 
-     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-     junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-            }
-            else     -> { // React is missing, so these commands need to be adjusted
-                """
-            #  Merge any lambdas into the lcov dir
-    lcov-result-merger '../src/lambda/*/coverage/lcov.info' '../lcov/lambdas_lcov.info'
-            #  Finally, merge it all together so we have SINGLE file we can send to QMA
-    lcov-result-merger '../lcov/*_lcov.info' '../lcov/results-lcov.info' || true
-
-            # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-
-    junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-    junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
-
-     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-     junit2html ../allMergedTests.xml ../allMergedTests.html
-"""
-            }
-        }
+        val assemblyClause = """
+                    #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
+                    junit2html allMergedTests.xml =allMergedTests.html
+               
+                    # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
+                    junit-merge src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
+                    junit-merge  allLambdasMergedTests.xml -o allMergedTests.xml || true
+                
+                     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                     junit2html allMergedTests.xml allMergedTests.html
+    """.trimIndent()
+        return mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
     }
 }
 
