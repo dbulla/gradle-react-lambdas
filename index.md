@@ -108,7 +108,7 @@ dependencies {}
 Next, we hve some simple methods used to determine what type of subproject is being run, and print out a banner.
 
 ```kotlin
-    private val reactEnvironment = System.getProperty("REACT_APP_ENVIRONMENT") ?: "local"
+private val reactEnvironment = System.getProperty("REACT_APP_ENVIRONMENT") ?: "local"
 private fun packageJsonExists(project: Project): Boolean = File(project.projectDir, "package.json").exists()
 private fun isLambda(project: Project): Boolean = project.projectDir.toString().contains("src/lambda")
 private fun isReact(project: Project): Boolean = project.projectDir.toString().contains("react")
