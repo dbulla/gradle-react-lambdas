@@ -74,6 +74,7 @@ class ReactLambdasPlugin : Plugin<Project> {
                     onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
 
                 }
+
                 tasks.register<ShellExec>("installProduction") {
                     description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
                     group = "Monorepo"
@@ -84,12 +85,23 @@ class ReactLambdasPlugin : Plugin<Project> {
                     onlyIf { packageJsonExists(this.project) }
                     doLast { println("The env used is: $reactEnvironment") }
                 }
+
                 tasks.register<ShellExec>("test") {
                     description = "Run the tests for both React and Lambdas"
                     group = "Monorepo"
-                    command = when {
+                    command = when {  // run the test AND copy the resulting coverage files to 
                         isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
                         else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
+                    }
+                    onlyIf { packageJsonExists(this.project) }
+                }
+                tasks.register<ShellExec>("copyCoverage") {
+                    description = "Copy the coverage files to a central area for merging "
+                    group = "Monorepo"
+                    val dirName = this.project.path.substringAfterLast("/") // get the dir name
+                    command = when {  // run the test AND copy the resulting coverage files to 
+                        isReact(this.project) -> ext.testReactCommand ?: "cp coverage/coverage-final.json ../build/coverage/react-coverage-final.json"
+                        else                  -> ext.testLambdaCommand ?: "cp coverage/coverage-final.json ../../../build/coverage/$dirName-coverage-final.json"
                     }
                     onlyIf { packageJsonExists(this.project) }
                 }
@@ -278,6 +290,18 @@ project(":$it").projectDir = File("../src/lambda/$it")
                 
                      #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
                      junit2html allMergedTests.xml allMergedTests.html
+                     
+                     # Test coverage summary is nasty... we have to "roll up" all the sub projects
+                     
+                     # First, merge all the coverage files.  I tried to use a custom dir, but nyc didn't like that, so we use the default:
+                     nyc merge build/coverage .nyc_output/merged-coverage
+                     
+                     # Create the HTML report from the merged files
+                     nyc report --report-dir build/coverage-report --reporter=html
+                     
+                     # However, we need a SUMMARY of coverage for our pipeline requirements, not JSON - so we have to convert
+                     nyc report --reporter json-summary -t build/coverage --report-dir build/coverage-summary
+                      
     """.trimIndent()
         return mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
     }
