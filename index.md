@@ -2,15 +2,20 @@
 
 ## The problem:
 
-I recently had to work with a project that was a mash-up of a React front-end, combined with multiple AWS Lambdas.
+I recently had to work with a project that was a mash-up of a React front-end combined with multiple AWS Lambdas - all
+in the same repo and pipeline.
 
-While all the code was JavaScript/TypeScript, there were large differences between the React build and the lambda builds - and even within
-the lambdas (up to 20 in a repo). Typescript was used in most, but not all of the projects.
+While all the code was JavaScript/TypeScript, there were large differences between the React build, and the lambda
+builds - and even within the lambdas (up to 20 in a repo). Typescript was used in most, but not all of, the projects.
+
+I would have preferred to break up the project into individual repos, one for each sub-project, but that wasn't an
+option available to me.
 
 ## Constraints
 
-I was somewhat constrained in that I could not change the project's code to bring them all into a single framework. We had different
-toolsets, different frameworks, etc., so I really couldn't take advantage of some of the existing JS tools which might help.
+I was somewhat constrained in that I could not change the project's code to bring them all into a single framework. We
+had different toolsets, different frameworks, etc., so I really couldn't take advantage of some existing JS tools which
+might help.
 
 Our project structure looked like this:
 
@@ -27,16 +32,18 @@ src
     lambda_18
 ```
 
-All of the lambdas code is in a `src/lambdas` dir, and if there's a front-end component, that goes into a `react` dir as shown.
+All the lambdas code is in a `src/lambdas` dir, and if there's a front-end component, that goes into a `react` dir as
+shown.
 
 ## Doing everything in Jenkins
 
-I initially wrote a bunch of Jenkins pipeline code to manually iterate through all the projects when linting, testing, etc - but I had to
-keep track of what passed/failed for each subproject, and then notify Jenkins only after all the subprojects had been run. Needless to say,
-there was a lot of boilerplate code which was telling the proejct _how_ to do the build steps, not _what_ build steps to do.
+I initially wrote a bunch of Jenkins pipeline code to manually iterate through all the projects when linting, testing,
+etc - but I had to keep track of what passed/failed for each subproject, and then notify Jenkins only after all the
+subprojects had been run. Needless to say, there was a lot of boilerplate code which was telling the project _how_ to do
+the build steps, not _what_ build steps to do.
 
-It finally dawned on me that Gradle handles all of this quite easily - it knows how to handle a multiple project repo, and run steps on ALL
-the subprojects before reporting failure - stuff I'd been trying to implement.
+It finally dawned on me that Gradle handles all of this quite easily - it knows how to handle a multiple project repo,
+and run steps on ALL the subprojects before reporting failure - stuff I'd been trying to implement.
 
 Moving the logic out of Jenkins meant that the Jenkins code got a lot clearer - plus, I could also use the Gradle script to run the build
 steps locally to duplicate the pipeline. Doing pipeline development locally is much, much faster than committing and watching the pipeline,
