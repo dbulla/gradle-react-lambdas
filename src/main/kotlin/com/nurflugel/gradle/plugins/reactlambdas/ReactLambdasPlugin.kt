@@ -271,39 +271,48 @@ project(":$it").projectDir = File("../src/lambda/$it")
         val hasReact = File("${project.projectDir}/..")
                 .listFiles()
                 .any { it.name == "react" }
-
+        val createBuildDirClause = """
+             mpdir -p .nyc_output
+             mkdir -p build/coverage-report
+             mkdir -p build/coverage
+             mkdir -p build/testCoverageFiles
+        """.trimIndent()
         val mergeReactClause = if (hasReact) "junit-merge  react/coverage/jest/junit.xml  -o allReactMergedTests.xml || true" else ""
+        val coverageReactClause = if (hasReact) "cp react/coverage/coverage-final.json build/coverage/coverage-react.json || true" else ""
         val mergeLambdasClause = """
                     # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
                     junit-merge  src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
                     """.trimIndent()
 
-        val mergingMergedClause = if (hasReact) "junit-merge allLambdasMergedTests.xml allReactMergedTests.xml -o allMergedTests.xml || true" else ""
+        val mergingMergedClause = when {
+            hasReact -> "junit-merge build/allLambdasMergedTests.xml build/allReactMergedTests.xml -o build/allMergedTests.xml || true"
+            else     -> "junit-merge build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true"
+        }
 
         val assemblyClause = """
                     #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
-                    junit2html allMergedTests.xml =allMergedTests.html
+                    junit2html build/allMergedTests.xml build/allMergedTests.html
                
                     # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
-                    junit-merge src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
-                    junit-merge  allLambdasMergedTests.xml -o allMergedTests.xml || true
+                    junit-merge src/lambda/*/coverage/jest/junit.xml -o build/allLambdasMergedTests.xml || true
+                    junit-merge  build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true
                 
-                     #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                     junit2html allMergedTests.xml allMergedTests.html
-                     
-                     # Test coverage summary is nasty... we have to "roll up" all the sub projects
-                     
-                     # First, merge all the coverage files.  I tried to use a custom dir, but nyc didn't like that, so we use the default:
-                     nyc merge build/coverage .nyc_output/merged-coverage
-                     
-                     # Create the HTML report from the merged files
-                     nyc report --report-dir build/coverage-report --reporter=html
-                     
-                     # However, we need a SUMMARY of coverage for our pipeline requirements, not JSON - so we have to convert
-                     nyc report --reporter json-summary -t build/coverage --report-dir build/coverage-summary
+                    #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                    junit2html build/allMergedTests.xml build/allMergedTests.html
+                    
+                    # Test coverage summary is nasty... we have to "roll up" all the sub projects
+                    
+                    # First, merge all the coverage files.  I tried to use a custom dir, but nyc didn't like that, so we use the default:
+                    nyc merge build/coverage .nyc_output/merged-coverage
+                    
+                    # Create the HTML report from the merged files
+                    nyc report --report-dir build/coverage-report --reporter=html
+                    
+                    # However, we need a SUMMARY of coverage for our pipeline requirements, not JSON - so we have to convert
+                    nyc report --reporter json-summary -t build/coverage --report-dir build/coverage-summary
                       
     """.trimIndent()
-        return mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
+        return createBuildDirClause + mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
     }
 }
 
