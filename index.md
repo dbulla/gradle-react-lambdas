@@ -89,6 +89,9 @@ pluginManagement {
 
 ## Creating the build script the project - first pass
 
+Skip to the plugin section if you want to get to the solution I used - but it's worthwhile to see the evolution of moving build script commands
+into the custom plugin.
+
 Here's what my first build script looked
 like: [build.gradle.kts](https://github.com/dbulla/gradle-react-lambdas/blob/gh-pages/src/exampleFullScript/build.gradle.kts)
 
@@ -142,7 +145,7 @@ subprojects {
   tasks {
     tasks.register<ShellExec>("install") {
       description = "Do the 'install' operation"
-      group = "React/Lambdas"
+      group = "Monorepo"
       command = when {
         isReact(this.project) -> ext.installReactCommand ?: "npm install"
         else                  -> ext.installLambdaCommand ?: "yarn"
@@ -152,50 +155,50 @@ subprojects {
     }
     tasks.register<ShellExec>("installProduction") {
       description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-      group = "React/Lambdas"
+      group = "Monorepo"
       command = when {
         isReact(this.project)         -> ext.installReactProductionCommand ?: "npm run build"
                 else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
-            }
-            onlyIf { packageJsonExists(this.project) }
-            doLast { println("The env used is: $reactEnvironment") }
         }
-        tasks.register<ShellExec>("test") {
-            description = "Run the tests for both React and Lambdas"
-            group = "React/Lambdas"
-            command = when {
-                isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
-                else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
-            }
-            onlyIf { packageJsonExists(this.project) }
+        onlyIf { packageJsonExists(this.project) }
+        doLast { println("The env used is: $reactEnvironment") }
+    }
+    tasks.register<ShellExec>("test") {
+        description = "Run the tests for both React and Lambdas"
+        group = "Monorepo"
+        command = when {
+            isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
+            else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
         }
+        onlyIf { packageJsonExists(this.project) }
+    }
 
-        tasks.register<ShellExec>("lint") {
-            description = "Lint the code"
-            group = "React/Lambdas"
-            command = when {
-                isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
-                else                  -> ext.lintLambdaCommand ?: "yarn run lint"
-            }
-            onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
+    tasks.register<ShellExec>("lint") {
+        description = "Lint the code"
+        group = "Monorepo"
+        command = when {
+            isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
+            else                  -> ext.lintLambdaCommand ?: "yarn run lint"
         }
+        onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
+    }
 
-        tasks.register<ShellExec>("tsc") {
-            description = "Run tsc on any project that has a tsconfig.json "
-            group = "React/Lambdas"
-            command = "yarn run tsc"
-            onlyIf {
-                val lambda = isLambda(this.project)
-                val exists = file("tsconfig.json").exists()
-                println("tsconfig.json exists = $exists")
-                lambda && exists
-            }
+    tasks.register<ShellExec>("tsc") {
+        description = "Run tsc on any project that has a tsconfig.json "
+        group = "Monorepo"
+        command = "yarn run tsc"
+        onlyIf {
+            val lambda = isLambda(this.project)
+            val exists = file("tsconfig.json").exists()
+            println("tsconfig.json exists = $exists")
+            lambda && exists
         }
+    }
 
     // React only
     tasks.register<ShellExec>("runReact") {
       description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-      group = "React/Lambdas"
+      group = "Monorepo"
       command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
       onlyIf { isReact(this.project) }
     }
@@ -203,14 +206,14 @@ subprojects {
     // React only
     tasks.register<ShellExec>("buildCss") {
       description = "Build the CSS"
-      group = "React/Lambdas"
+      group = "Monorepo"
       command = ext.buildCssCommand ?: "npm run build-css"
       onlyIf { isReact(this.project) }
     }
 
     tasks.register<Exec>("cleanUpForDeploy") {
       description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
-      group = "React/Lambdas"
+      group = "Monorepo"
       isIgnoreExitValue = true
       commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js".split(
               " "
@@ -247,7 +250,7 @@ I but this all into a method called `createMergeCommands.`
 ```kotlin
 tasks.register<ShellExec>("mergeTestResults") {
   description = "Merge all the test results"
-  group = "React/Lambdas"
+  group = "Monorepo"
     command = createMergeCommands(project)
 }
 
@@ -256,30 +259,52 @@ tasks.register<ShellExec>("mergeTestResults") {
  * have to have a third condition of react w/no lambdas.
  */
 private fun createMergeCommands(project: Project): String {
-  val hasReact = File("${project.projectDir}/..")
-          .listFiles()
-          .any { it.name == "react" }
+     val hasReact = File("${project.projectDir}/..")
+             .listFiles()
+             .any { it.name == "react" }
+     val createBuildDirClause = """
+          mpdir -p .nyc_output
+          mkdir -p build/coverage-report
+          mkdir -p build/coverage
+          mkdir -p build/testCoverageFiles
+     """.trimIndent()
+     val mergeReactClause = if (hasReact) "junit-merge  react/coverage/jest/junit.xml  -o allReactMergedTests.xml || true" else ""
+     val coverageReactClause = if (hasReact) "cp react/coverage/coverage-final.json build/coverage/coverage-react.json || true" else ""
+     val mergeLambdasClause = """
+                 # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
+                 junit-merge  src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
+                 """.trimIndent()
 
-  println("hasReact files is $hasReact")
-  return """
-               # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-               junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-               """
-  + if (hasReact){ "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"}
-  + """
-               junit - merge../ allLambdasMergedTests . xml .. / allReactMergedTests.xml - o../ allMergedTests . xml || true
-       
-               #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
-               junit2html../ allMergedTests . xml .. / allMergedTests.html
-               # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
-               junit-merge ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-               junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
-           
-                #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                junit2html ../allMergedTests.xml ../allMergedTests.html
-""".trimIndent()
-}
+     val mergingMergedClause = when {
+         hasReact -> "junit-merge build/allLambdasMergedTests.xml build/allReactMergedTests.xml -o build/allMergedTests.xml || true"
+         else     -> "junit-merge build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true"
+     }
 
+     val assemblyClause = """
+                 #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
+                 junit2html build/allMergedTests.xml build/allMergedTests.html
+            
+                 # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
+                 junit-merge src/lambda/*/coverage/jest/junit.xml -o build/allLambdasMergedTests.xml || true
+                 junit-merge  build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true
+             
+                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                 junit2html build/allMergedTests.xml build/allMergedTests.html
+                 
+                 # Test coverage summary is nasty... we have to "roll up" all the sub projects
+                 
+                 # First, merge all the coverage files.  I tried to use a custom dir, but nyc didn't like that, so we use the default:
+                 nyc merge build/coverage .nyc_output/merged-coverage
+                 
+                 # Create the HTML report from the merged files
+                 nyc report --report-dir build/coverage-report --reporter=html
+                 
+                 # However, we need a SUMMARY of coverage for our pipeline requirements, not JSON - so we have to convert
+                 nyc report --reporter json-summary -t build/coverage --report-dir build/coverage-summary
+                   
+ """.trimIndent()
+     return createBuildDirClause + mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
+ }
 ```
 
 If lambdas are added or renamed, the `settings.gradle.kts` file would need to be modified. I'm really lazy, so I wrote a task to
@@ -447,158 +472,217 @@ Again, this is almost exactly the same as the code from the
 old [`build.gradle.kts`](https://github.com/dbulla/gradle-react-lambdas/blob/gh-pages/src/exampleFullScript/build.gradle.kts):
 
 ```kotlin
-  private fun registerTasks(project: Project, ext: ReactLambdasPluginExtension) = with(project) {
-
   /** Everything in subprojects applies only to the sub-projects - not the global project */
-  subprojects {
+subprojects {
     tasks {
-      tasks.register<ShellExec>("install") {
-        description = "Do the 'install' operation"
-        group = "React/Lambdas"
-        command = when {
-          isReact(this.project) -> ext.installReactCommand ?: "npm install"
-          else                  -> ext.installLambdaCommand ?: "yarn"
+        tasks.register<ShellExec>("install") {
+            description = "Do the 'install' operation"
+            group = "Monorepo"
+            // this looks pretty fancy - but this is how we can have overridable commands per-project.  You could override it by having
+            // this bit in your project's build.gradle:
+            // ccReactLambdas {
+            //    installLambdaCommand = "npm install --verbose"
+            // }
+            command = when {
+                isReact(this.project) -> ext.installReactCommand ?: "npm install"
+                else                  -> ext.installLambdaCommand ?: "yarn"
+            }
+            onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
+
         }
-        onlyIf { packageJsonExists(this.project) } // using this.project gets the current subproject - not the global project
 
-      }
-      tasks.register<ShellExec>("installProduction") {
-        description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
-        group = "React/Lambdas"
-        command = when {
-          isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
-          else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
+        tasks.register<ShellExec>("installProduction") {
+            description = "Package the production dependencies.  Run it like this: 'gradle installProduction -DREACT_APP_ENVIRONMENT=dev"
+            group = "Monorepo"
+            command = when {
+                isReact(this.project) -> ext.installReactProductionCommand ?: "npm run build"
+                else                  -> ext.installLambdaProductionCommand ?: "yarn --production"
+            }
+            onlyIf { packageJsonExists(this.project) }
+            doLast { println("The env used is: $reactEnvironment") }
         }
-        onlyIf { packageJsonExists(this.project) }
-        doLast { println("The env used is: $reactEnvironment") }
-      }
-      tasks.register<ShellExec>("test") {
-        description = "Run the tests for both React and Lambdas"
-        group = "React/Lambdas"
-        command = when {
-          isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
-          else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
+
+        tasks.register<ShellExec>("test") {
+            description = "Run the tests for both React and Lambdas"
+            group = "Monorepo"
+            command = when {  // run the test AND copy the resulting coverage files to 
+                isReact(this.project) -> ext.testReactCommand ?: "npm run test-coverage"
+                else                  -> ext.testLambdaCommand ?: "yarn test --testTimeout=10000"
+            }
+            onlyIf { packageJsonExists(this.project) }
         }
-        onlyIf { packageJsonExists(this.project) }
-      }
-
-      tasks.register<ShellExec>("lint") {
-        description = "Lint the code"
-        group = "React/Lambdas"
-        command = when {
-          isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
-          else                  -> ext.lintLambdaCommand ?: "yarn run lint"
+        tasks.register<ShellExec>("copyCoverage") {
+            description = "Copy the coverage files to a central area for merging "
+            group = "Monorepo"
+            val dirName = this.project.path.substringAfterLast("/") // get the dir name
+            command = when {  // run the test AND copy the resulting coverage files to 
+                isReact(this.project) -> ext.testReactCommand ?: "cp coverage/coverage-final.json ../build/coverage/react-coverage-final.json"
+                else                  -> ext.testLambdaCommand ?: "cp coverage/coverage-final.json ../../../build/coverage/$dirName-coverage-final.json"
+            }
+            onlyIf { packageJsonExists(this.project) }
         }
-        onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
-      }
 
-      tasks.register<ShellExec>("tsc") {
-        description = "Run tsc on any project that has a tsconfig.json "
-        group = "React/Lambdas"
-        command = "yarn run tsc"
-        onlyIf {
-          val lambda = isLambda(this.project)
-          val exists = file("tsconfig.json").exists()
-          println("tsconfig.json exists = $exists")
-          lambda && exists
+        tasks.register<ShellExec>("lint") {
+            description = "Lint the code"
+            group = "Monorepo"
+            command = when {
+                isReact(this.project) -> ext.lintReactCommand ?: "npm run lint-ts"
+                else                  -> ext.lintLambdaCommand ?: "yarn run lint"
+            }
+            onlyIf { packageJsonExists(this.project) && (file(".eslintrc").exists() || file(".eslintrc.js").exists()) }
         }
-      }
 
-      // React only
-      tasks.register<ShellExec>("runReact") {
-        description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
-        group = "React/Lambdas"
-        command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
-        onlyIf { isReact(this.project) }
-      }
+        tasks.register<ShellExec>("tsc") {
+            description = "Run tsc on any project that has a tsconfig.json "
+            group = "Monorepo"
+            command = "yarn run tsc"
+            onlyIf {
+                val lambda = isLambda(this.project)
+                val exists = file("tsconfig.json").exists()
+                println("tsconfig.json exists = $exists")
+                lambda && exists
+            }
+        }
 
-      // React only
-      tasks.register<ShellExec>("buildCss") {
-        description = "Build the CSS"
-        group = "React/Lambdas"
-        command = ext.buildCssCommand ?: "npm run build-css"
-        onlyIf { isReact(this.project) }
-      }
+        // React only
+        tasks.register<ShellExec>("runReact") {
+            description = "Run the React app like this: 'gradle runReact -DREACT_APP_ENVIRONMENT=dev'.  If -DREACT_APP_ENVIRONMENT is omitted, local is used"
+            group = "Monorepo"
+            command = ext.runReactCommand ?: "npm run start-$reactEnvironment"
+            onlyIf { isReact(this.project) }
+        }
 
-      tasks.register<Exec>("cleanUpForDeploy") {
-        description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
-        group = "React/Lambdas"
-        isIgnoreExitValue = true
-        commandLine = ("ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml " +
-                       "jest-config.js test *.txt *.ts yarn.lock jest.config.js").split(" ")
-        onlyIf { isLambda(this.project) && packageJsonExists(this.project) }
-      }
+        // React only
+        tasks.register<ShellExec>("buildCss") {
+            description = "Build the CSS"
+            group = "Monorepo"
+            command = ext.buildCssCommand ?: "npm run build-css"
+            onlyIf { isReact(this.project) }
+        }
 
-      // below are housekeeping tasks
-      tasks.register<ShellExec>("createModulesList") {
-        description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
-        group = "React/Lambdas Housekeeping"
-        command = "ls -w1 node_modules > node_modules.out"
-        onlyIf { packageJsonExists(this.project) }
-      }
+        tasks.register<Exec>("cleanUpForDeploy") {
+            description = "Remove any files in the lambda dirs not needed for deployment - this WILL delete source-controlled files, so run locally with care!"
+            group = "Monorepo"
+            isIgnoreExitValue = true
+            commandLine = "ls -l serverless.yaml event.json package-lock.json package.json serverless.yaml jest-config.js test *.txt *.ts yarn.lock jest.config.js"
+                    .split(" ")
+            onlyIf { isLambda(this.project) && packageJsonExists(this.project) }
+        }
 
-      tasks.register<Delete>("cleanNodeModules") {
-        description = "Clean the node modules dirs"
-        group = "React/Lambdas Housekeeping"
-        delete = setOf("node_modules", "node_modules.out")
-      }
+        // below are housekeeping tasks
+        tasks.register<ShellExec>("createModulesList") {
+            description = "create a list of the contents for each module and export that into a file - very useful for fast comparisons of different builds"
+            group = "Monorepo Housekeeping"
+            command = "ls -w1 node_modules > node_modules.out"
+            onlyIf { packageJsonExists(this.project) }
+        }
+
+        tasks.register<Delete>("cleanNodeModules") {
+            description = "Clean the node modules dirs"
+            group = "Monorepo Housekeeping"
+            delete = setOf("node_modules", "node_modules.out")
+        }
     }
-  }
+}
 
+tasks.register<ShellExec>("mergeTestResults") {
+    description = "Merge all the test coverage results"
+    group = "Monorepo"
+    command = createMergeCommands(project)
+}
 
-  tasks.register<ShellExec>("mergeTestResults") {
-    description = "Merge all the test results"
-    group = "React/Lambdas"
+tasks.register<ShellExec>("cleanCoverage") {
+    description = "Clean out the coverage folders between tests"
+    group = "Monorepo Housekeeping"
+    command = "find . -name coverage | grep -v modules | xargs rm -rf"
+}
+
+tasks.register<ShellExec>("outputToolVersions") {
+    description = "Show the tool versions"
+    group = "Monorepo Housekeeping"
+
     command = """
-              mkdir -p ../lcov
-              """ + createMergeCommands(project)
-  }
+        echo "Git version " $(git --version)
+        echo "NPM version " $(npm --version)
+        echo "Node version" $(node --version)
+        echo "Yarn version" $(yarn --version)
+        echo "Tsc version " $(tsc --version)
+        echo "pip3 version " $(pip3 -V)
+        echo "junit-merge version " $(junit-merge -V)
+        ${ext.outputToolVersionsExtra ?: ""}
+        """ + createMergeCommands(project)
+}
 
+afterEvaluate {
+    // we print the banner here as it needs to be done AFTER evaluation so the vars can be read in
+    printBanner(project, ext)
+}
 
-  /** Some of the tools don't give you an option to ignore stuff that's not there and fail, so we have to have different
-   * commands for whether or not React is there.  It's assumed that there is at least one lambda in the project; else, we'll
-   * have to have a third condition of react w/no lambdas.
-   */
-  private fun createMergeCommands(project: Project): String {
+/** Some of the tools don't give you an option to ignore stuff that's not there and fail, so we have to have different
+ * commands for whether or not React is there.  It's assumed that there is at least one lambda in the project; else, we'll
+ * have to have a third condition of react w/no lambdas.
+ */
+private fun createMergeCommands(project: Project): String {
     val hasReact = File("${project.projectDir}/..")
             .listFiles()
             .any { it.name == "react" }
-
-    println("hasReact files is $hasReact")
-    return """
+    val createBuildDirClause = """
+         mpdir -p .nyc_output
+         mkdir -p build/coverage-report
+         mkdir -p build/coverage
+         mkdir -p build/testCoverageFiles
+    """.trimIndent()
+    val mergeReactClause = if (hasReact) "junit-merge  react/coverage/jest/junit.xml  -o allReactMergedTests.xml || true" else ""
+    val coverageReactClause = if (hasReact) "cp react/coverage/coverage-final.json build/coverage/coverage-react.json || true" else ""
+    val mergeLambdasClause = """
                 # Next, run the command to merge all the Junit xml files into one toplevel xml file - https://www.npmjs.com/package/junit-merge
-                junit-merge  ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-                """
-    + if (hasReact)
-      "junit-merge  ../react/coverage/jest/junit.xml  -o ../allReactMergedTests.xml || true"
-    + """
-                junit - merge../ allLambdasMergedTests . xml .. / allReactMergedTests.xml - o../ allMergedTests . xml || true
-        
+                junit-merge  src/lambda/*/coverage/jest/junit.xml -o allLambdasMergedTests.xml || true
+                """.trimIndent()
+
+    val mergingMergedClause = when {
+        hasReact -> "junit-merge build/allLambdasMergedTests.xml build/allReactMergedTests.xml -o build/allMergedTests.xml || true"
+        else     -> "junit-merge build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true"
+    }
+
+    val assemblyClause = """
                 #  Finally, create an HTML report from THAT via junit2html - https: //github.com/inorton/junit2html
-                junit2html../ allMergedTests . xml .. / allMergedTests.html
+                junit2html build/allMergedTests.xml build/allMergedTests.html
+           
                 # Next, run the command to merge all the Junit xml files into one toplevel xml file - https: //www.npmjs.com/package/junit-merge
-                junit-merge ../src/lambda/*/coverage/jest/junit.xml -o ../allLambdasMergedTests.xml || true
-                junit-merge  ../allLambdasMergedTests.xml -o ../allMergedTests.xml || true
+                junit-merge src/lambda/*/coverage/jest/junit.xml -o build/allLambdasMergedTests.xml || true
+                junit-merge  build/allLambdasMergedTests.xml -o build/allMergedTests.xml || true
             
-                 #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
-                 junit2html ../allMergedTests.xml ../allMergedTests.html
+                #  Finally, create an HTML report from THAT via junit2html - https://github.com/inorton/junit2html
+                junit2html build/allMergedTests.xml build/allMergedTests.html
+                
+                # Test coverage summary is nasty... we have to "roll up" all the sub projects
+                
+                # First, merge all the coverage files.  I tried to use a custom dir, but nyc didn't like that, so we use the default:
+                nyc merge build/coverage .nyc_output/merged-coverage
+                
+                # Create the HTML report from the merged files
+                nyc report --report-dir build/coverage-report --reporter=html
+                
+                # However, we need a SUMMARY of coverage for our pipeline requirements, not JSON - so we have to convert
+                nyc report --reporter json-summary -t build/coverage --report-dir build/coverage-summary
+                  
 """.trimIndent()
-  }
+    return createBuildDirClause + mergeReactClause + mergeLambdasClause + mergingMergedClause + assemblyClause
 }
+
 ```
 
 I hate maintaining files needed for the build - this next task will create the `settings.gradle.kts` file:
 
 ```kotlin
-    tasks.register("regenerateSettingsDotGradle") {
+tasks.register("regenerateSettingsDotGradle") {
 
     description = "Utility class to regenerate the tools/settings.gradle.kts file - if you create more lambdas, run this "
-    group = "React/Lambdas Housekeeping"
+    group = "Monorepo Housekeeping"
     doLast {
         // create the file header
         val stringBuilder = StringBuilder("""rootProject.name = "${rootProject.name}"
-"""
-                                         )
+""")
         // deal with the react contents if they exist
         val reactDir = File("react")
         println("React dir exists: ${reactDir.exists()}")
@@ -607,8 +691,7 @@ I hate maintaining files needed for the build - this next task will create the `
 
 include("react")
 project(":react").projectDir = File("../react")
-"""
-                                )
+""")
         }
 
         // Now create a mapping entry for each lambda
@@ -634,22 +717,21 @@ project(":$it").projectDir = File("../src/lambda/$it")
         // finally, add the plugin repo settings
         stringBuilder.append("""
 
-            pluginManagement {
-                repositories {
-                    gradlePluginPortal()
-                    mavenLocal()
-                    corporatePluginRepo()
-                }
-            } 
-        """.trimIndent()
-                            )
+    pluginManagement {
+        repositories {
+            gradlePluginPortal()
+            mavenLocal()
+        }
+    } 
+""".trimIndent())
 
         // write it to disk
         val fileContents = stringBuilder.toString()
-        File("settings.gradle.kts").writeText(fileContents)
+        File("tools/settings.gradle.kts").writeText(fileContents)
 
     }
 }
+
 ```
 
 And, finally, a nice util function to print out all the versions being used. We let the extensions add any extra commands. Lastly, we print
